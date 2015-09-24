@@ -1,6 +1,7 @@
-import select
+import queue
 import socket
 import sys
+import threading
 
 class ChatServer:
     GREETING = b"GREETING"
@@ -15,19 +16,14 @@ class ChatServer:
         self.clients = {}
         self.socket_in = None
         self.socket_out = None
-        self.epoll = None
-        self.outgoing_ready = False
-        self.outgoing = ''
-        self.outgoing_sender_hash = None
+        self.incoming_queue = None
+        self.incoming_thread = None
 
     def start(self):
-        # initialize incoming socket and epoll
+        # initialize incoming socket and threads
         self.socket_in = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
                                        socket.IPPROTO_UDP)
-        self.socket_in.setblocking(False)
         self.socket_in.bind(('', self.port_in))
-        self.epoll = select.epoll()
-        self.epoll.register(self.socket_in, select.EPOLLIN)
 
         # initialize outgoing socket
         ############################
@@ -35,7 +31,11 @@ class ChatServer:
         self.socket_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
                                         socket.IPPROTO_UDP)
         self.socket_out.bind(('', self.port_out))
-        #self.epoll.register(self.socket_out, select.EPOLLOUT)
+
+        # set up the incoming thread and associated data structures
+        self.incoming_queue = queue.Queue()
+        self.incoming_thread = threading.Thread(target=self.wait_for_message,
+                                                name="incoming_thread")
         print("Server Initialized")
 
     def recv_data(self):
@@ -44,57 +44,53 @@ class ChatServer:
     def send_data(self, data, address):
         self.socket_out.sendto(data, address)
 
+    def handle_exception(self, exception):
+        print(str(exception), file=sys.stderr)
+
     def handle_continuation(self, sender_hash, sender, data):
         if not data.startswith(self.MESSAGE):
             raise Exception("Client sent misformed data... Ignoring")
 
-        self.outgoing = self.INCOMING + b"<From " + sender[0].encode() + b":"
-        self.outgoing += str(sender[1]).encode() + b">: " + data[len(self.MESSAGE):]
-        self.outgoing_sender_hash = sender_hash
-        self.outgoing_ready = True
-        self.handle_outgoing()
+        outgoing = self.INCOMING + b"<From " + sender[0].encode() + b":"
+        outgoing += str(sender[1]).encode() + b">: " + data[len(self.MESSAGE):]
+        outgoing_sender_hash = sender_hash
+        self.handle_outgoing(outgoing, outgoing_sender_hash)
 
-    def handle_outgoing(self):
-        if not self.outgoing_ready:
-            return
-
+    def handle_outgoing(self, message, sender_hash):
         for peer_hash, peer_address in self.clients.items():
-            if peer_hash == self.outgoing_sender_hash:
+            if peer_hash == sender_hash:
                 continue
-            self.send_data(self.outgoing, peer_address)
-        self.outgoing_ready = False
-        self.outgoing_sender_hash = None
+            self.send_data(message, peer_address)
 
-    def receive_greeting_and_register(self, peer_hash, peer, data):
+    def register_greeting(self, peer_hash, peer, data):
         if data.startswith(self.GREETING):
             self.clients[peer_hash] = peer
         else:
             raise Exception("Unexpected message from unregistered peer")
 
-    def handle_packet(self, fd):
-        if not fd == self.socket_in.fileno():
-            raise Exception("Unexpected I/O event captured... Ignoring")
-
-        data = self.recv_data()
-        peer = data[1]
-        peer_hash = hash(peer)
-        if self.clients.get(peer_hash) is not None:
-            self.handle_continuation(peer_hash, peer, data[0])
-        else:
-            self.receive_greeting_and_register(peer_hash, peer, data[0])
+    def handle_incoming(self):
+        # block the thread until some message is received
+        while True:
+            try:
+                # block until incoming_queue has pending data
+                data = self.incoming_queue.get()
+                peer = data[1]
+                peer_hash = hash(peer)
+                content = data[0]
+                if self.clients.get(peer_hash) is not None:
+                    self.handle_continuation(peer_hash, peer, content)
+                else:
+                    self.register_greeting(peer_hash, peer, content)
+            except Exception as e:
+                self.handle_exception(e)
 
     def wait_for_message(self):
-        if self.epoll is None:
-            raise Exception("Server tried to listen before initialization...")
-
         while True:
-            events = self.epoll.poll()
-            for fd, event in events:
-                try:
-                    if event & select.EPOLLIN:
-                        self.handle_packet(fd)
-                except Exception as e:
-                    print(str(e), file=sys.stderr)
+            try:
+                # block until data is received and then add it to the queue
+                self.incoming_queue.put(self.recv_data())
+            except Exception as e:
+                self.handle_exception(e)
 
 def parse_args():
     if not len(sys.argv) == 3:
@@ -103,7 +99,8 @@ def parse_args():
 
     server = ChatServer(sys.argv[2])
     server.start()
-    server.wait_for_message()
+    server.incoming_thread.run()
+    server.handle_incoming()
 
 if __name__ == "__main__":
     parse_args()
