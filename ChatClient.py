@@ -1,6 +1,6 @@
-import select
 import socket
 import sys
+import threading
 
 class ChatClient:
     INCOMING = b"INCOMING"
@@ -11,7 +11,7 @@ class ChatClient:
         """ Initialize a chat client instance
         server_info : a pair of (hostaddr, port) for the remote host
         port : optional argument to specify the port the client will use
-                   for outgoing datagrams
+               for outgoing datagrams
         DATA_MAX : optional argument to specify the max packet size for reading
                    incoming datagrams
         """
@@ -20,30 +20,46 @@ class ChatClient:
         self.port = int(port)
         self.server_info = server_info
         self.socket = None
-        self.epoll = None
-        self.ready_buf = b''
+        self.incoming_thread = None
+        self.input_thread = None
 
     def print_prompt(self):
+        """
+        prints the prompt to stdout
+        """
         print('+>', end=' ', flush=True)
 
     def greet_server(self):
+        """
+        greets the server with the self.GREETING data
+        """
         self.send_data(self.GREETING)
 
     def start(self):
-        # initialize the client socket
+        """
+        initializes the client and greets the server
+        """
+        # initialize the client socket and set up the threads
+        # if an OSError is caught, the function iterates self.port and retries
+        # creating the socket
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
                                         socket.IPPROTO_UDP)
-            #self.socket.setblocking(False)
             self.socket.bind(('', self.port))
-            self.epoll = select.epoll()
-            self.epoll.register(self.socket, select.EPOLLIN)
-            self.epoll.register(sys.stdin, select.EPOLLIN)
+
+            # set up the threads but do not start them
+            self.incoming_thread = threading.Thread(target=self.handle_incoming,
+                                                    name="incoming thread")
+            self.input_thread = threading.Thread(target=self.handle_input,
+                                                 name="input thread")
             # greet the server
             self.greet_server()
         except OSError:
             self.port += 1
             self.start()
+
+    def handle_exception(self, exception):
+        print(str(exception), file=sys.stderr)
 
     def recv_data(self):
         return self.socket.recv(self.DATA_MAX)
@@ -53,49 +69,28 @@ class ChatClient:
 
     def init_session(self):
         self.start()
-        self.print_prompt()
-        self.read_write_wait()
+        self.incoming_thread.start()
+        self.input_thread.start()
 
     def handle_input(self):
-        self.ready_buf = self.MESSAGE
-        self.ready_buf += sys.stdin.readline(self.DATA_MAX).encode()
-        self.ready_buf = self.ready_buf.strip()
-        self.print_prompt()
-        self.handle_outgoing(self.socket.fileno())
-
-    def handle_outgoing(self, fd):
-        if not fd == self.socket.fileno():
-            raise Exception("Unexpected fd caught... Ignoring")
-
-        self.send_data(self.ready_buf)
-        self.ready_buf = b''
-
-    def handle_incoming(self, fd):
-        if not fd == self.socket.fileno():
-            raise Exception("Unexpected fd caught... Ignoring")
-
-        incoming = self.recv_data()
-        if not incoming.startswith(self.INCOMING):
-            raise Exception("Invalid data received from server...")
-        print('\n<- ' + incoming[len(self.INCOMING):].decode())
-        self.print_prompt()
-
-    def read_write_wait(self):
-        if self.epoll is None:
-            raise Exception("Client tried to listen before initialization...")
-
         while True:
-            # start polling for incoming messages or user input
-            events = self.epoll.poll()
-            for fd, event in events:
-                try:
-                    if event & select.EPOLLIN:
-                        if fd == sys.stdin.fileno():
-                            self.handle_input()
-                        else:
-                            self.handle_incoming(fd)
-                except Exception as e:
-                    print(str(e), file=sys.stderr)
+            self.print_prompt()
+            message = self.MESSAGE
+            message += sys.stdin.readline(self.DATA_MAX).encode()
+            message = message.strip()
+            self.send_data(message)
+
+    def handle_incoming(self):
+        while True:
+            try:
+                incoming = self.recv_data()
+                if not incoming.startswith(self.INCOMING):
+                    raise Exception("Invalid data received from server...")
+                print('\n<- ' + incoming[len(self.INCOMING):].decode(),
+                      flush=True)
+                self.print_prompt()
+            except Exception as e:
+                self.handle_exception(e)
 
 def parse_args():
     if not len(sys.argv) == 5:

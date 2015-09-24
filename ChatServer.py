@@ -99,7 +99,7 @@ def parse_args():
 
     server = ChatServer(sys.argv[2])
     server.start()
-    server.incoming_thread.run()
+    server.incoming_thread.start()
     server.handle_incoming()
 
 if __name__ == "__main__":
