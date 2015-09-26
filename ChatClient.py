@@ -55,24 +55,43 @@ class ChatClient:
             # greet the server
             self.greet_server()
         except OSError:
+            #handle exceptions raised when the port number is already in use
             self.port += 1
             self.start()
 
     def handle_exception(self, exception):
+        """
+        print an exception to the stderr
+        """
         print(str(exception), file=sys.stderr)
 
     def recv_data(self):
+        """
+        receive data on self.socket
+        """
         return self.socket.recv(self.DATA_MAX)
 
     def send_data(self, data):
+        """
+        send data to the server
+        """
         self.socket.sendto(data, self.server_info)
 
     def init_session(self):
+        """
+        initialize the client and start the threads
+        """
         self.start()
         self.incoming_thread.start()
         self.input_thread.start()
 
     def handle_input(self):
+        """
+        ***BLOCKING***
+        read from stdin (blocking) and prompt the user forever.
+
+        this is meant to be used in a dedicated thread to avoid hang ups
+        """
         while True:
             self.print_prompt()
             message = self.MESSAGE
@@ -81,6 +100,16 @@ class ChatClient:
             self.send_data(message)
 
     def handle_incoming(self):
+        """
+        ***BLOCKING***
+        read from self.socket forever send any data received to stdout with
+        the "INCOMING" tag removed.
+
+        if an exception is raised from self.recv_data, or when the client
+        receives malformed data, print the exception and continue
+
+        this is meant to be used in a dedicated thread to avoid hang ups
+        """
         while True:
             try:
                 incoming = self.recv_data()
@@ -92,7 +121,11 @@ class ChatClient:
             except Exception as e:
                 self.handle_exception(e)
 
-def parse_args():
+def parse_args_and_start():
+    """
+    read the CL arguments and use them as parameters for a new ChatClient.
+    then start the ChatClient
+    """
     if not len(sys.argv) == 5:
         print("Invalid program arguments", file=sys.stderr)
         sys.exit(1)
@@ -100,5 +133,6 @@ def parse_args():
     client = ChatClient((sys.argv[2], int(sys.argv[4])))
     client.init_session()
 
+# main guard
 if __name__ == "__main__":
-    parse_args()
+    parse_args_and_start()
