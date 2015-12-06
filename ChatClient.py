@@ -93,11 +93,14 @@ class ChatClient:
         this is meant to be used in a dedicated thread to avoid hang ups
         """
         while True:
-            self.print_prompt()
-            message = self.MESSAGE
-            message += sys.stdin.readline(self.DATA_MAX).encode()
-            message = message.strip()
-            self.send_data(message)
+            try:
+                self.print_prompt()
+                message = self.MESSAGE
+                message += sys.stdin.readline(self.DATA_MAX).encode()
+                message = message.strip()
+                self.send_data(message)
+            except:
+                print("udp exception")
 
     def handle_incoming(self):
         """
