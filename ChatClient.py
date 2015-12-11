@@ -20,6 +20,8 @@ class ChatClient:
     
         self.port = int(port)
         self.server_info = server_info
+        self.pubkey = pubkey
+        self.privkey = privkey
         self.socket = None
         self.incoming_thread = None
         self.input_thread = None
@@ -34,7 +36,7 @@ class ChatClient:
         """
         greets the server with the self.GREETING data
         """
-        self.send_data(self.GREETING)
+        self.send_data(self.pubkey)
 
     def start(self):
         """
@@ -44,9 +46,10 @@ class ChatClient:
         # if an OSError is caught, the function iterates self.port and retries
         # creating the socket
         try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
-                                        socket.IPPROTO_UDP)
-            self.socket.bind(('', self.port))
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM,
+                                        socket.IPPROTO_TCP)
+            self.socket.connect(self.server_info)
+            #self.socket.bind(('', self.port))
 
             # set up the threads but do not start them
             self.incoming_thread = threading.Thread(target=self.handle_incoming,
@@ -76,7 +79,7 @@ class ChatClient:
         """
         send data to the server
         """
-        self.socket.sendto(data, self.server_info)
+        self.socket.sendall(data)
 
     def init_session(self):
         """
@@ -101,7 +104,7 @@ class ChatClient:
                 message = message.strip()
                 self.send_data(message)
             except:
-                print("udp exception")
+                print("Error sending user message")
 
     def handle_incoming(self):
         """
@@ -118,7 +121,7 @@ class ChatClient:
             try:
                 incoming = self.recv_data()
                 if not incoming.startswith(self.INCOMING):
-                    raise Exception("Invalid data received from server...")
+                    raise Exception("Invalid data received from peer")
                 print('\n<- ' + incoming[len(self.INCOMING):].decode(),
                       flush=True)
                 self.print_prompt()
