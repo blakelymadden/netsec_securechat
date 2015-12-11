@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
-import hashlib, random
+import sys, os, hashlib, random
+from cryptography.hazmat.primitives import serialization, hashes, hmac
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding as padd2
+from cryptography.exceptions import InvalidSignature, InvalidKey
+import l_globals as LG
 
 ###### Crypto Globals ######
 
@@ -26,6 +33,21 @@ def H(*a):
     a = ':'.join([str(a) for a in a])
     return int(hashlib.sha256(a.encode('ascii')).hexdigest(), 16)
 
+# pads the given data to be of length n
+def padd(data, n=LG.PADD_BLOCK * 8):
+    #data = bytes(data.encode('utf-8'))
+    padder = padd2.PKCS7(n).padder()
+    padded_data = padder.update(data)
+    padded_data += padder.finalize()
+    return padded_data
+
+# unpads the given data from n bytes
+def unpadd(padded_data, n=LG.PADD_BLOCK * 8):
+    #padded_data = bytes(padded_data.encode('utf-8'))
+    unpadder = padd2.PKCS7(n).unpadder()
+    data = unpadder.update(padded_data)
+    data += unpadder.finalize()
+    return data
 
 # generates a random crypto string 
 def cryptrand(n=1024):
@@ -34,6 +56,56 @@ def cryptrand(n=1024):
 # creates a 16 bit cryptographic salt
 def gen_salt(size=16):
     return cryptrand(size)
+    
+# Generates public key from private key and saves it at dest
+def gen_pub_key(dest, priv_key_f):
+    with open(priv_key_f, "rb") as key_file:
+        private_key = serialization.load_pem_private_key(
+            key_file.read(),
+            password=None,
+            backend=default_backend()
+        )
+    public_key = private_key.public_key()
+    
+    pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    with open(dest, 'wb') as dest_f:
+        dest_f.write(pem)
+    
+    return
+    
+    
+# Generates private key and saves it at dest
+def gen_priv_key(dest, size=2048):
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=size,
+        backend=default_backend()
+    )
+    
+    pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+    dest_f = open(dest, 'wb')
+    dest_f.write(pem)
+    dest_f.close()
+    return
+
+# loads the public key at the path given
+def load_public_key(path):
+    public_key = None
+    with open(path, "rb") as key_file:
+        public_key = serialization.load_pem_public_key(
+        key_file.read(),
+        backend=default_backend()
+    )
+    return public_key
+
+############### SRP ################
     
 # SRP super class    
 class SRP(object):
@@ -56,26 +128,26 @@ class SRP(object):
     def authenticated(self):
         return self.is_auth
     
-    
+exit    
 # SRP User class
 class SRP_User(SRP):
 
     def __init__(self, uname, password):
-        self.password = password
+        self.password = H(password, uname, N)
         self.a = cryptrand()
         self.M = None
         super(SRP_User, self).__init__(uname)
     
     # creates an initial authentication to send to server
     def start_authentication(self):
-        self.A = pow(g, self.a, N)
+        self.A = bytes(str(pow(g, self.a, N)).encode("utf-8"))
         return (self.uname, self.A)
     
     
     def create_session_key(self):
         u = self.gen_rand_scrambler()
         x = H(self.salt, self.uname, self.password)
-        S_c = pow(self.B - self.k * pow(g, x, N), self.a + u * x, N)
+        S_c = pow(int(self.B) - self.k * pow(g, x, N), self.a + u * x, N)
         K_c = H(S_c)
         self.session_key = K_c
 
@@ -87,7 +159,7 @@ class SRP_User(SRP):
         return self.M
     
     def verify_session(self, HAMK):
-        M_s = H(A, self.M, self.session_key)
+        M_s = H(self.A, self.M, self.session_key)
         if M_s == HAMK:
             self.is_auth = True 
     
@@ -104,13 +176,13 @@ class SRP_Verifier(SRP):
         
     # gets the inital challenge that the server will send
     def get_challenge(self):
-        self.B = (self.k * self.v + pow(g, self.b, N)) % N
-        return (salt, self.B)
+        self.B = bytes(str((self.k * self.v + pow(g, self.b, N)) % N).encode("utf-8"))
+        return (self.salt, self.B)
     
     # generates a shared session key
     def create_session_key(self):
         u = self.gen_rand_scrambler()
-        S_s = pow(self.A * pow(self.v, u, N), self.b, N)
+        S_s = pow(int(self.A) * pow(self.v, u, N), self.b, N)
         K_s = H(S_s)
         self.session_key = K_s
 
@@ -121,10 +193,58 @@ class SRP_Verifier(SRP):
         M_c = H(H(N) ^ H(g), H(self.uname), self.salt, self.A, self.B, self.session_key)
         if M_c == M:
             self.is_auth = True
-            HAMK = H(A, M_c, self.session_key)
+            HAMK = H(self.A, M_c, self.session_key)
             return HAMK
         else:
             return None
-        
+
+#################################### 
+
 class AuthenticationFailed (Exception):
     pass
+
+
+######## Symetric Encryption ########
+HMAC_BLOCK = 32
+
+def sym_enc(data, key, salt):
+    cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
+    encryptor = cipher.encryptor()
+    padder = padd2.PKCS7(LG.PADD_BLOCK).padder()
+    padded_data = padder.update(data)
+    padded_data += padder.finalize()
+    ct = encryptor.update(padded_data) + encryptor.finalize()
+    return ct
+
+def sym_dec(data, key, salt):
+    cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
+    decryptor = cipher.decryptor()
+    pad_plain_text = decryptor.update(cipher_text)
+    unpadder = padd2.PKCS7(LG.PADD_BLOCK).unpadder()
+    plain_text = unpadder.update(pad_plain_text)
+    return plain_text
+    
+    
+def apply_hmac(data, key):
+    h = hmac.HMAC(key, hashes.SHA256(), backend=default_backend())
+    h.update(data)
+    sig = h.finalize()
+    return sig + data
+
+def verify_hmac(data, key):
+    h = hmac.HMAC(key, hashes.SHA256(), backend=default_backend())
+    h.update(key)
+    sig = h.finalize()
+    data_sig = data[:HMAC_BLOCK]
+    return sig == data_sig
+    
+def enc_and_hmac(data, key, salt):
+    ct = sym_enc(data, key, salt)
+    return apply_hmac(ct, key)
+    
+def dec_and_hmac(data, key, salt):
+    if verify_hmac(data, key):
+        msg = data[HMAC_BLOCK:]
+        return sym_dec(msg, key, salt)
+    else:
+        return None

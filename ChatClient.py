@@ -163,7 +163,7 @@ class ChatClient:
                 self.print_prompt()
                 message = sys.stdin.readline(self.DATA_MAX).encode().strip()
                 
-
+                print("todo")
 #                self.print_prompt()
 #                message = sys.stdin.readline(self.DATA_MAX).encode()
 #                if message == LIST:
