@@ -4,6 +4,8 @@ import threading
 import local_crypt as LC
 import l_globals as LG
 
+#enc = lambda s: LC.enc_and_hmac(s, usr.verifier.session_key, usr.verifier.salt)
+
 class ChatClient:
     INCOMING = b"INCOMING"
     GREETING = b"GREETING"
@@ -42,7 +44,6 @@ class ChatClient:
         """
         self.send_data(self.GREETING)
 
-    
     def greet_with_srp(self):
         """
         authenticates the user with the server using srp
@@ -91,7 +92,7 @@ class ChatClient:
             print("\nFailed to Authenticate user:" + uname)
             exit(1)
         return True
-        
+
     def start(self):
         """
         initializes the client and greets the server
@@ -100,9 +101,10 @@ class ChatClient:
         # if an OSError is caught, the function iterates self.port and retries
         # creating the socket
         try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
-                                        socket.IPPROTO_UDP)
-            self.socket.bind(('', self.port))
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM,
+                                        socket.IPPROTO_TCP)
+            self.socket.connect(self.server_info)
+            #self.socket.bind(('', self.port))
 
             # greet the server
             while True:
@@ -132,13 +134,13 @@ class ChatClient:
         """
         return self.socket.recv(self.DATA_MAX)
 
-    def send_data(self, data, crypt=False):
+    def send_data(self, data, crypt=None, *args=None):
         """
         send data to the server
         """
-        if crypt:
-            data = LC.enc_and_hmac(data, self.session_key, self.salt)
-        self.socket.sendto(data, self.server_info)
+        if crypt is not None:
+            data = crypt(data, args)
+        self.socket.sendall(data)
 
     def init_session(self):
         """
@@ -157,27 +159,29 @@ class ChatClient:
         """
         while True:
             try:
-                self.print_prompt()
-                message = sys.stdin.readline(self.DATA_MAX).encode()
-                if message == LIST:
-                    message = message.strip()
-                    self.send_data(message, crypt=True)
-                elif message.startswith(SEND):
-                    ### BLAKE YOU DO THIS PART ###
-                    uname = data[len(send) + 1 :]
-                    if uname in list(self.user_keys.keys()):
-                        print("u got this blake")
-                    else:
-                        data = LC.enc_and_hmac(message, self.session_key, self.salt)
-                        self.send_data(data, crypt=True)
-                        incoming = None
-                        while(len(incoming) == 0):
-                            incoming = self.recv_data()
-                        if incoming is not None:
-                            incoming = LC.enc_and_hmac(incoming, self.session_key, self.salt)
-                            self.user_keys[uname] = incoming
-                            #### BLAKE! ###
-                            print("u got this blake")
+                
+
+#                self.print_prompt()
+#                message = sys.stdin.readline(self.DATA_MAX).encode()
+#                if message == LIST:
+#                    message = message.strip()
+#                    self.send_data(message, crypt=True)
+#                elif message.startswith(SEND):
+#                    ### BLAKE YOU DO THIS PART ###
+#                    uname = data[len(send) + 1 :]
+#                    if uname in list(self.user_keys.keys()):
+#                        print("u got this blake")
+#                    else:
+#                        data = LC.enc_and_hmac(message, self.session_key, self.salt)
+#                        self.send_data(data, crypt=True)
+#                        incoming = None
+#                        while(len(incoming) == 0):
+#                            incoming = self.recv_data()
+#                        if incoming is not None:
+#                            incoming = LC.enc_and_hmac(incoming, self.session_key, self.salt)
+#                            self.user_keys[uname] = incoming
+#                            #### BLAKE! ###
+#                            print("u got this blake")
                         
             except:
                 print("udp exception")
