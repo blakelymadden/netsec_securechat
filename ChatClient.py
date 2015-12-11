@@ -134,7 +134,7 @@ class ChatClient:
         """
         return self.socket.recv(self.DATA_MAX)
 
-    def send_data(self, data, crypt=None, *args=None):
+    def send_data(self, data, crypt=None, *args):
         """
         send data to the server
         """
@@ -160,7 +160,7 @@ class ChatClient:
         while True:
             try:
                 
-
+                print("todo")
 #                self.print_prompt()
 #                message = sys.stdin.readline(self.DATA_MAX).encode()
 #                if message == LIST:
