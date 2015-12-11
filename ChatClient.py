@@ -28,6 +28,7 @@ class ChatClient:
         self.socket = None
         self.incoming_thread = None
         self.input_thread = None
+        self.peer = None
         self.session_key = None
         self.salt = None
         self.user_keys = {}
@@ -134,7 +135,7 @@ class ChatClient:
         """
         return self.socket.recv(self.DATA_MAX)
 
-    def send_data(self, data, crypt=None, *args=None):
+    def send_data(self, data, crypt=None, *args):
         """
         send data to the server
         """
@@ -159,6 +160,8 @@ class ChatClient:
         """
         while True:
             try:
+                self.print_prompt()
+                message = sys.stdin.readline(self.DATA_MAX).encode().strip()
                 
 
 #                self.print_prompt()
@@ -184,7 +187,7 @@ class ChatClient:
 #                            print("u got this blake")
                         
             except:
-                print("udp exception")
+                print("Error receiving user input")
                 
     def handle_incoming(self):
         """
