@@ -4,7 +4,7 @@ import threading
 import local_crypt as LC
 import l_globals as LG
 
-#enc = lambda s: LC.enc_and_hmac(s, usr.verifier.session_key, usr.verifier.salt)
+enc = lambda s: LC.enc_and_hmac(s, usr.verifier.session_key, usr.verifier.salt)
 
 class ChatClient:
     INCOMING = b"INCOMING"
@@ -12,6 +12,7 @@ class ChatClient:
     MESSAGE = b"MESSAGE"
     SEND = b"send "
     LIST = b"list"
+    DELIM = b"~~~~~"
     
     def __init__(self, server_info, port=10002, DATA_MAX=8192):
         """ Initialize a chat client instance
@@ -26,12 +27,16 @@ class ChatClient:
         self.port = int(port)
         self.server_info = server_info
         self.socket = None
+        self.socket_wait = None
+        self.socket_out = None
         self.incoming_thread = None
         self.input_thread = None
         self.peer = None
         self.session_key = None
         self.salt = None
         self.user_keys = {}
+        self.peers = {}
+        self.active_sessions = {}
 
     def print_prompt(self):
         """
@@ -59,15 +64,19 @@ class ChatClient:
         password = password[:len(password) - 1]
         srp_usr = LC.SRP_User(uname, password)
         uname, A = srp_usr.start_authentication()
-        p_uname = LC.padd(uname)
-        message = p_uname + A
+        #p_uname = LC.padd(uname)
+        message = uname + self.DELIM + A
         self.send_data(message)
         incoming = self.recv_data()
         salt = None
         while(len(incoming) == 0):
             incoming = self.recv_data()
+        if len(incoming.split(self.DELIM)) <= 1:
+            print(str(incoming))
+            self.greet_with_srp()
         try: 
-            salt = LC.unpadd(bytes(incoming[:LG.PADD_BLOCK]))
+            salt = incoming.split(self.DELIM)[0]
+            #salt = LC.unpadd(bytes(incoming[:LG.PADD_BLOCK]))
         except ValueError as ve:
             try:
                 print(str(incoming).decode("uf8-8"))
@@ -76,7 +85,8 @@ class ChatClient:
                 self.handle_exception(e)
             return False
         self.salt = salt
-        B = incoming[LG.PADD_BLOCK:]
+        B = incoming.split(self.DELIM)[1]
+        #B = incoming[LG.PADD_BLOCK:]
         M = srp_usr.process_challenge(salt, B)
         if M is None:
             print("\nFailed to Authenticate user:" + uname)
@@ -102,26 +112,30 @@ class ChatClient:
         # if an OSError is caught, the function iterates self.port and retries
         # creating the socket
         try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM,
-                                        socket.IPPROTO_TCP)
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect(self.server_info)
             #self.socket.bind(('', self.port))
 
+            self.socket_wait = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket_wait.bind(('', self.port))
+            self.socket_wait.listen(1)
+
+            self.socket_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
+                                            IPPROTO_UDP)
+            self.socket_out.bind(('', self.port-100))
+
             # greet the server
-            while True:
-                logged = self.greet_with_srp()
-                if logged:
-                    break
+            while not logged: logged = self.greet_with_srp()
             
             # set up the threads but do not start them
             self.incoming_thread = threading.Thread(target=self.handle_incoming,
                                                     name="incoming thread")
             self.input_thread = threading.Thread(target=self.handle_input,
                                                  name="input thread")
-        except OSError:
+        except OSError as e:
             #handle exceptions raised when the port number is already in use
             self.port += 1
-            self.start() 
+            self.start()
 
     def handle_exception(self, exception):
         """
@@ -151,6 +165,52 @@ class ChatClient:
         self.incoming_thread.start()
         self.input_thread.start()
 
+    def server_query(self, message):
+        pass
+
+    def init_peer_session(self, message, peer_info):
+        peer_addr = self.peer_info[0]
+        peer_pub = self.peer_info[1]
+
+        # generate the random key and initialization vector for aes256
+        aeskey = os.urandom(32)
+        aesiv = os.urandom(16)
+
+        rsa_data = aesiv + self.DELIM + aeskey
+
+        enc_aes_key_iv = peer_pub.encrypt(
+            rsa_data, padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA1()),
+                algorithm=hashes.SHA1(),
+                label=None))
+
+        rsa_signer = self.privkey.signer(
+            asymmetric.padding.PSS(
+                mgf=padding.MGF1(self.hash_func()),
+                salt_length=padding.PSS.MAX_LENGTH)
+            ,self.hash_func())
+
+        rsa_signer.update(rsa_data)
+        rsa_sig = rsa_signer.finalize()
+
+        self.socket_out.sendto(enc_aes_key_iv + rsa_sig, peer_addr)
+        while not self.socket_out.recvfrom(DATA_MAX)[1] == peer_addr:
+        #more encrypt setup
+        self.socket_out.sendto(message, peer_addr)
+
+    def peer_session(self, message):
+        peer = message.split(':')[0]
+
+        peer_info = self.peers.get(peer)
+
+        if peer_info is None:
+            print("\n<- Request this user's info before continuing", flush=True)
+            self.print_prompt()
+        elif not peer_info[0]:
+            self.init_peer_session(peer[1], peer_info)
+        else:
+            return#TODO
+
     def handle_input(self):
         """
         ***BLOCKING***
@@ -162,8 +222,11 @@ class ChatClient:
             try:
                 self.print_prompt()
                 message = sys.stdin.readline(self.DATA_MAX).encode().strip()
-                
-                print("todo")
+                if message == LIST or message.startswith(SEND):
+                    self.server_query(message)
+                else:
+                    self.peer_session(message)
+                    
 #                self.print_prompt()
 #                message = sys.stdin.readline(self.DATA_MAX).encode()
 #                if message == LIST:
@@ -202,11 +265,11 @@ class ChatClient:
         """
         while True:
             try:
-                incoming = self.recv_data()
-                if not incoming.startswith(self.INCOMING):
-                    raise Exception("Invalid data received from server...")
-                print('\n<- ' + incoming[len(self.INCOMING):].decode(),
-                      flush=True)
+                incoming_conn = self.socket_wait.accept()
+                incoming_sock = incoming_conn[0]
+                incoming_info = incoming_conn[1]
+                incoming = incoming_sock.recv(DATA_MAX)
+                print('\n<- ' + incoming.decode(), flush=True)
                 self.print_prompt()
             except Exception as e:
                 self.handle_exception(e)

@@ -2,9 +2,9 @@
 import sys, os, hashlib, random
 from cryptography.hazmat.primitives import serialization, hashes, hmac
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
+#from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding as padd2
+#from cryptography.hazmat.primitives import padding as padd2
 from cryptography.exceptions import InvalidSignature, InvalidKey
 import l_globals as LG
 
@@ -33,21 +33,21 @@ def H(*a):
     a = ':'.join([str(a) for a in a])
     return int(hashlib.sha256(a.encode('ascii')).hexdigest(), 16)
 
-# pads the given data to be of length n
-def padd(data, n=LG.PADD_BLOCK * 8):
-    #data = bytes(data.encode('utf-8'))
-    padder = padd2.PKCS7(n).padder()
-    padded_data = padder.update(data)
-    padded_data += padder.finalize()
-    return padded_data
+## pads the given data to be of length n
+#def padd(data, n=LG.PADD_BLOCK * 8):
+#    #data = bytes(data.encode('utf-8'))
+#    padder = padd2.PKCS7(n).padder()
+#    padded_data = padder.update(data)
+#    padded_data += padder.finalize()
+#    return padded_data
 
-# unpads the given data from n bytes
-def unpadd(padded_data, n=LG.PADD_BLOCK * 8):
-    #padded_data = bytes(padded_data.encode('utf-8'))
-    unpadder = padd2.PKCS7(n).unpadder()
-    data = unpadder.update(padded_data)
-    data += unpadder.finalize()
-    return data
+## unpads the given data from n bytes
+#def unpadd(padded_data, n=LG.PADD_BLOCK * 8):
+#    #padded_data = bytes(padded_data.encode('utf-8'))
+#    unpadder = padd2.PKCS7(n).unpadder()
+#    data = unpadder.update(padded_data)
+#    data += unpadder.finalize()
+#    return data
 
 # generates a random crypto string 
 def cryptrand(n=1024):
@@ -210,18 +210,18 @@ HMAC_BLOCK = 32
 def sym_enc(data, key, salt):
     cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
     encryptor = cipher.encryptor()
-    padder = padd2.PKCS7(LG.PADD_BLOCK).padder()
-    padded_data = padder.update(data)
-    padded_data += padder.finalize()
-    ct = encryptor.update(padded_data) + encryptor.finalize()
+#    padder = padd2.PKCS7(LG.PADD_BLOCK).padder()
+#    padded_data = padder.update(data)
+#    padded_data += padder.finalize()
+    ct = encryptor.update(data) + encryptor.finalize()
     return ct
 
 def sym_dec(data, key, salt):
     cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
     decryptor = cipher.decryptor()
-    pad_plain_text = decryptor.update(cipher_text)
-    unpadder = padd2.PKCS7(LG.PADD_BLOCK).unpadder()
-    plain_text = unpadder.update(pad_plain_text)
+    pad_plain_text = decryptor.update(cipher_text) + decryptor.finalize()
+#    unpadder = padd2.PKCS7(LG.PADD_BLOCK).unpadder()
+#    plain_text = unpadder.update(pad_plain_text)
     return plain_text
     
     
