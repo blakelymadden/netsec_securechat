@@ -61,7 +61,6 @@ class User():
     def load_user_from_json(uname):
         try:
             path = User.get_user_data_path(uname)
-            print(path)
             data = None
             with open(path, "r") as data_file:
                 read_data = data_file.read()

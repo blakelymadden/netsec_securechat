@@ -112,7 +112,7 @@ class ChatServer:
             uname = data[len(SEND) + 1 :]
             usr = self.logged_in_clients.get(uname)
             if usr is not None:
-                s_data = end(bytes("{0}:{1}".format(usr.address, user.port_in)) + self.DELIM + usr.pub_key)
+                s_data = enc(bytes("{0}:{1}".format(usr.address, user.port_in)) + self.DELIM + usr.pub_key)
                 self.send_data(s_data)
             else: 
                 s_data = enc(self.ERROR + b": User is not logged in")
@@ -139,7 +139,6 @@ class ChatServer:
         #uname = LC.unpadd(p_uname).decode("utf-8")
         uname = content.split(self.DELIM)[0].decode()
         self.handle_login_user(uname, peer)
-        print(uname)
         usr = User.load_user_from_json(uname)
         if usr is None:
             self.send_data(b"No such user!")
@@ -152,7 +151,8 @@ class ChatServer:
         s, B = usr.verifier.get_challenge()
         #response = LC.padd(bytes(s)) + bytes(B)
         response = bytes(s) + self.DELIM + bytes(B)
-        self.send_data(bytes(response))
+        print(response)
+        self.send_data(response)
         self.clients[peer_hash] = (peer, usr)
     
     def handle_user_verification(self, peer_hash, peer, content):
@@ -162,7 +162,7 @@ class ChatServer:
         else:
             self.handle_login_user(usr.name, peer)
             self.handle_locked_user(usr, peer)
-            HAMK = usr.verifier.verify_session(content)
+            HAMK = usr.verifier.verify_session(int(content.decode("utf-8")))
             self.send_data(bytes(HAMK))
             if not usr.verifier.authenticated():
                 self.clients[peer_hash][1] = None

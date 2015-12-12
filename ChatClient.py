@@ -96,7 +96,8 @@ class ChatClient:
         if M is None:
             print("\nFailed to Authenticate user:" + uname)
             exit(1)
-        self.send_data(M)
+        print(M)
+        self.send_data(str(M).encode("utf-8"))
         while(len(incoming) == 0):
             incoming = self.recv_data()
         srp_usr.verify_session(incoming)
@@ -105,7 +106,7 @@ class ChatClient:
             print("\nSuccessfully Logged In")
             self.print_prompt()
         else:
-            print("\nFailed to Authenticate user:" + uname)
+            print("\nFailed to Authenticate user:" + uname.decode("utf-8"))
             exit(1)
         return True
 

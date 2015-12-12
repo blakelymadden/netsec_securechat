@@ -54,8 +54,8 @@ def cryptrand(n=1024):
     return random.SystemRandom().getrandbits(n) % N
 
 # creates a 16 bit cryptographic salt
-def gen_salt(size=16):
-    return cryptrand(size)
+def gen_salt(size=2):
+    return os.urandom(size)
     
 # Generates public key from private key and saves it at dest
 def gen_pub_key(dest, priv_key_f):
