@@ -206,7 +206,7 @@ class AuthenticationFailed (Exception):
 
 ######## Symetric Encryption ########
 HMAC_BLOCK = 32
-ENDDELIM = "~!~!~"
+ENDDELIM = b"~!~!~"
 def sym_enc(data, key, salt):
     cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
     encryptor = cipher.encryptor()
@@ -216,10 +216,10 @@ def sym_enc(data, key, salt):
     block_size_bytes = algorithms.AES.block_size / 8
     missing_bytes = block_size_bytes -\
                     ((len(data)
-                      + len(self.ENDDELIM)) %
+                      + len(ENDDELIM)) %
                      block_size_bytes)
-    data += self.ENDDELIM
-    if missing_bytes: data += os.urandom(missing_bytes)
+    data += ENDDELIM
+    if missing_bytes: data += os.urandom(int(missing_bytes))
 
     ct = encryptor.update(data) + encryptor.finalize()
     return ct
@@ -227,7 +227,7 @@ def sym_enc(data, key, salt):
 def sym_dec(data, key, salt):
     cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
     decryptor = cipher.decryptor()
-    pad_plain_text = decryptor.update(cipher_text) + decryptor.finalize()
+    pad_plain_text = decryptor.update(data) + decryptor.finalize()
     #unpadder = padd2.PKCS7(LG.PADD_BLOCK).unpadder()
     #plain_text = unpadder.update(pad_plain_text)
     return pad_plain_text.split(ENDDELIM)[0]
@@ -241,10 +241,11 @@ def apply_hmac(data, key):
 
 def verify_hmac(data, key):
     h = hmac.HMAC(key, hashes.SHA256(), backend=default_backend())
-    h.update(key)
-    sig = h.finalize()
     data_sig = data[:HMAC_BLOCK]
-    return sig == data_sig
+    h.update(data[HMAC_BLOCK:])
+    h.verify(data_sig)
+    return True
+    
     
 def enc_and_hmac(data, key, salt):
     ct = sym_enc(data, key, salt)

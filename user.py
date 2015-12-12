@@ -23,21 +23,21 @@ users file path
 """
 
 class User():
-    def __init__(self, name=None, pw=None, addresss=None, port_in=None, json_data=None):
+    def __init__(self, name=None, pw=None, address=None, port_in=None, json_data=None):
         if(json_data != None):
             data = json_data
             self.name = data['name']
             self.pw = data['password']
-            self.addresss = data['addresss']
+            self.address = data['address']
             self.port_in = data["port_in"]
             self.pub_key = User.load_pub_key(self.name)
-            if addresss is not None:
-                self.addresss = addresss
+            if address is not None:
+                self.address = address
             
         else:
             self.name = name
             self.pw = H(pw, name, N)
-            self.addresss = addresss
+            self.address = address
             self.pub_key = None
             self.port_in = port_in
         self.attempts = 0
@@ -48,7 +48,7 @@ class User():
         l_json = {
             "name": self.name,
             "password": self.pw,
-            "addresss": self.addresss,
+            "address": self.address,
             "port_in": self.port_in,
         }
         return l_json
@@ -76,7 +76,7 @@ class User():
     @staticmethod
     def load_pub_key(uname):
         path = User.get_user_pub_key_path(uname)
-        return load_public_key(path)
+        return open(path, 'r').read().encode()#load_public_key(path)
 
             
     # generates the users data path

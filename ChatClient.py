@@ -5,7 +5,7 @@ import traceback
 import local_crypt as LC
 import l_globals as LG
 from l_globals import LIST, SEND
-from cryptography.hazmat.backends import openssl
+from cryptography.hazmat.backends import openssl, default_backend
 from cryptography.hazmat.primitives import hashes, serialization, asymmetric, ciphers
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import algorithms, modes
@@ -22,7 +22,7 @@ class ChatClient:
     DELIM = b"~~~~~"
     ENDDELIM = b"~!~!~"
     
-    def __init__(self, server_info, port=10002, DATA_MAX=8192):
+    def __init__(self, server_info, privkey, port=10002, DATA_MAX=8192):
         """ Initialize a chat client instance
         server_info : a pair of (hostaddr, port) for the remote host
         port : optional argument to specify the port the client will use
@@ -45,6 +45,12 @@ class ChatClient:
         self.peers = {}
         self.active_sessions = {}
         self.backend = openssl.backend
+        self.privkey = None
+        self.name = None
+        with open(privkey, 'rb') as privkey_f:
+            self.privkey = serialization.load_pem_private_key(privkey_f.read(),
+                                                              password=None,
+                                                              backend=self.backend)
 
     def print_prompt(self):
         """
@@ -66,6 +72,7 @@ class ChatClient:
         self.print_prompt()
         uname = sys.stdin.readline(self.DATA_MAX)
         uname = uname.strip()
+        self.name = uname
         print("Enter Password")
         self.print_prompt()
         password = sys.stdin.readline(self.DATA_MAX)
@@ -133,7 +140,8 @@ class ChatClient:
 
             self.socket_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
                                             socket.IPPROTO_UDP)
-            self.socket_out.bind(('', self.port-100))
+            print(self.socket.getsockname())
+            self.socket_out.bind(self.socket.getsockname())
 
             # greet the server
             logged = False
@@ -185,34 +193,36 @@ class ChatClient:
             response = dec(self.recv_data())
             print(response)
             self.print_prompt()
-        elif message.startswitch(SEND):
+        elif message[:len(SEND)] == SEND:
             self.send_data(message, True)
             response = dec(self.recv_data())
-            split1 = response.split(':')
-            split2 = split1.split(DELIM)
-            self.peers[split1[0]] = (split1[0], split2[0], split2[1])
+            split1 = response.split(b':')
+            split2 = split1[1].split(self.DELIM)
+            key = serialization.load_pem_public_key(split2[1], backend=default_backend())
+            self.peers[message.split(b' ',2)[1]] = [(split1[0], split2[0], key)]
+            self.peer_session(message)
 
     def aes_encrypt(self, message, peer_key, peer_iv):
         # set up the plaintext (padded if needed) for AES encryption
         plaintext = message
-        block_size_bytes = ciphers.algorithms.AES.block_size / 8
+        block_size_bytes = int(ciphers.algorithms.AES.block_size / 8)
         missing_bytes = block_size_bytes -\
                         ((len(plaintext)
                           + len(self.ENDDELIM)) %
                          block_size_bytes)
         plaintext += self.ENDDELIM
-        if missing_bytes: plaintext += os.urandom(missing_bytes)
+        if missing_bytes: plaintext += os.urandom(int(missing_bytes))
         
         # split the plaintext into blocks for the AES CBC algorithm to use
         blocks = []
-        for i in range(0, len(plaintext) / block_size_bytes):
+        for i in range(0, int(len(plaintext) / block_size_bytes)):
             blocks.append(
                 plaintext[i*block_size_bytes:(i+1)*block_size_bytes])
             
         # set up the AES encryptor with the key and iv
         encryptor = ciphers.Cipher(
-            ciphers.algorithms.AES(aeskey),
-            ciphers.modes.CBC(aesiv),
+            ciphers.algorithms.AES(peer_key),
+            ciphers.modes.CBC(peer_iv),
             self.backend
         ).encryptor()
         
@@ -222,7 +232,7 @@ class ChatClient:
             encrypted_blocks.append(encryptor.update(block))
         blocks.append(encryptor.finalize())
 
-        out = ''
+        out = b''
         # write the AES encrypted message to the output file
         for block in encrypted_blocks:
             out+= block
@@ -241,7 +251,7 @@ class ChatClient:
         return plaintext.split(self.ENDDELIM)[0]
 
     def init_peer_session(self, message, peer_info):
-        peer_host_port = (peer_info[0][0], peer_info[0][1])
+        peer_host_port = (peer_info[0][0], int(peer_info[0][1]))
         peer_pub = peer_info[0][2]
 
         # generate the random key and initialization vector for aes256
@@ -260,37 +270,34 @@ class ChatClient:
 
         rsa_signer = self.privkey.signer(
             asymmetric.padding.PSS(
-                mgf=padding.MGF1(self.hash_func()),
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH)
-            ,self.hash_func())
+            ,hashes.SHA256())
 
         rsa_signer.update(rsa_data)
         rsa_sig = rsa_signer.finalize()
 
-        self.socket_out.sendto(enc_aes_key_iv + DELIM + rsa_sig, peer_host_port)
+        self.socket_out.sendto(enc_aes_key_iv + self.DELIM + rsa_sig, peer_host_port)
         received = None
-        while True:
-            received = self.socket_out.recvfrom(DATA_MAX)
-            if not received[1] == peer_addr:
-                continue
+        #while True:
+        #    received = self.socket_out.recvfrom(DATA_MAX)
+        #    if not received[1] == peer_addr:
+        #        continue
         self.peer_session(message)
 
     def peer_session(self, message):
-        peer_split = message.split(':')
+        peer_split = message.split(b' ', 2)
+        peer_info = self.peers.get(peer_split[1])
 
-        peer_info = self.peers.get(peer_split[0])
+        try:
+            self.peers.get(peer_split[1])[1]
+        except:
+            self.init_peer_session(message, peer_info)
 
-        if peer_info is None:
-            print("\n<- Request this user's info before continuing", flush=True)
-            self.print_prompt()
-        else:
-            try:
-                self.peers.get(peer_split[0])[1]
-            except:
-                self.init_peer_session(peer_split[1], peer_info)
-
-        tosend = self.aes_encrypt(peer_split[1], peer_info[1][0], peer_info[1][1])
-        socket_out.sendto(tosend, (peer_info[0][0], peer_info[0][1]))
+        tosend = self.name.encode() + self.DELIM \
+            + self.aes_encrypt(peer_split[2], peer_info[1][0], peer_info[1][1])
+        print(peer_info)
+        self.socket_out.sendto(tosend, (peer_info[0][0], int(peer_info[0][1])))
 
     def handle_input(self):
         """
@@ -303,8 +310,7 @@ class ChatClient:
             try:
                 self.print_prompt()
                 message = sys.stdin.readline(self.DATA_MAX).encode().strip()
-                if message == LIST or message.startswith(SEND):
-                    print(message)
+                if message == LIST or message[:len(SEND)] == SEND:
                     self.server_query(message)
                 else:
                     self.peer_session(message)
@@ -326,15 +332,11 @@ class ChatClient:
         """
         while True:
             try:
-                incoming_conn = self.socket_wait.accept()
-                incoming_sock = incoming_conn[0]
-                incoming_info = incoming_conn[1]
-                incoming = incoming_sock.recv(DATA_MAX)
-                peer_split = incoming.split(' ')
-                split2 = peer_split[1].split(':')
-                peer = peer_split[0]
-                peer_info = self.peers.get(peer)
-                print('\n<- ' + self.aes_decrypt(split2[1], peer_info), flush=True)
+                incoming = self.socket_out.recv(self.DATA_MAX)
+                incoming_l = incoming.split(self.DELIM, 1)
+                peer_info = self.peers.get(incoming_l[0])
+                print(incoming_l[0] + b'\n' + incoming_l[1])
+                print('\n<- ' + self.aes_decrypt(incoming_l[1], peer_info), flush=True)
                 self.print_prompt()
             except Exception as e:
                 self.handle_exception(e)
@@ -344,11 +346,11 @@ def parse_args_and_start():
     read the CL arguments and use them as parameters for a new ChatClient.
     then start the ChatClient
     """
-    if not len(sys.argv) == 5:
+    if not len(sys.argv) == 7:
         print("Invalid program arguments", file=sys.stderr)
         sys.exit(1)
 
-    client = ChatClient((sys.argv[2], int(sys.argv[4])))
+    client = ChatClient((sys.argv[2], int(sys.argv[4])), privkey=sys.argv[6])
     client.init_session()
 
 # main guard

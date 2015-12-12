@@ -91,7 +91,7 @@ class ChatServer:
         """
         print(str(exception), file=sys.stderr)
 
-    def handle_continuation(self, peer_hash, data, sock):
+    def handle_continuation(self, peer_hash, peer, data, sock):
         """
         handler for data starting with self.MESSAGE
 
@@ -102,17 +102,17 @@ class ChatServer:
         data = LC.dec_and_hmac(data, usr.verifier.session_key, usr.verifier.salt)
         enc = lambda s: LC.enc_and_hmac(s, usr.verifier.session_key, usr.verifier.salt)
         if data is None:
-            self.send_data("Failed to authenticate message", sock)
+            self.send_data(b"Failed to authenticate message", sock)
             raise Exception("Failed to authenticate")
         if data == LIST:
             u_list = "\n".join(self.logged_in_clients)
-            s_data = enc(u_list)
+            s_data = enc(u_list.encode())
             self.send_data(s_data, sock)
         elif data.startswith(SEND):
-            uname = data[len(SEND) + 1 :]
+            uname = data.decode().split(' ')[1]
             usr = self.logged_in_clients.get(uname)
             if usr is not None:
-                s_data = enc(bytes("{0}:{1}".format(usr.address, user.port_in)) + self.DELIM + usr.pub_key)
+                s_data = enc("{0}:{1}".format(usr.address, usr.port_in).encode() + self.DELIM + usr.pub_key)
                 self.send_data(s_data, sock)
             else: 
                 s_data = enc(self.ERROR + b": User is not logged in")

@@ -42,3 +42,9 @@ assert usr.authenticated()
 assert svr.authenticated()
 
 print("Success!")
+
+data = b"12132323dsfhsadifhaodha"
+ct = LC.enc_and_hmac(data, svr.session_key, salt)
+dt = LC.dec_and_hmac(ct, svr.session_key, salt)
+assert dt is not None
+assert data == dt
