@@ -73,17 +73,17 @@ class ChatServer:
 
         print("Server Initialized")
 
-    def recv_data(self):
+    def recv_data(self, sock):
         """
         receive data on self.socket_in
         """
-        return self.socket_out.recv(self.DATA_MAX)
+        return sock.recv(self.DATA_MAX)
 
-    def send_data(self, data):
+    def send_data(self, data, sock):
         """
         send data from self.socket_out
         """
-        self.socket_out.sendall(bytes(data))
+        self.sock.sendall(data)
 
     def handle_exception(self, exception):
         """
@@ -91,7 +91,7 @@ class ChatServer:
         """
         print(str(exception), file=sys.stderr)
 
-    def handle_continuation(self, peer_hash, data):
+    def handle_continuation(self, peer_hash, data, sock):
         """
         handler for data starting with self.MESSAGE
 
@@ -102,21 +102,21 @@ class ChatServer:
         data = LC.dec_and_hmac(data, usr.verifier.session_key, usr.verifier.salt)
         enc = lambda s: LC.enc_and_hmac(s, usr.verifier.session_key, usr.verifier.salt)
         if data is None:
-            self.send_data("Failed to authenticate message")
+            self.send_data("Failed to authenticate message", sock)
             raise Exception("Failed to authenticate")
         if data == LIST:
             u_list = "\n".join(self.logged_in_clients)
             s_data = enc(u_list)
-            self.send_data(s_data)
+            self.send_data(s_data, sock)
         elif data.startswith(SEND):
             uname = data[len(SEND) + 1 :]
             usr = self.logged_in_clients.get(uname)
             if usr is not None:
                 s_data = enc(bytes("{0}:{1}".format(usr.address, user.port_in)) + self.DELIM + usr.pub_key)
-                self.send_data(s_data)
+                self.send_data(s_data, sock)
             else: 
                 s_data = enc(self.ERROR + b": User is not logged in")
-                self.send_data(s_data)
+                self.send_data(s_data, sock)
                 raise Exception("User is not logged in")
                 
 
@@ -131,19 +131,19 @@ class ChatServer:
 #            self.send_data(message)
 #
 
-    def handle_login_init(self, peer_hash, peer, content):
+    def handle_login_init(self, peer_hash, peer, content, sock):
         """
         logs in a client using srp
         """
         #p_uname = bytes(content[:LG.PADD_BLOCK])
         #uname = LC.unpadd(p_uname).decode("utf-8")
         uname = content.split(self.DELIM)[0].decode()
-        self.handle_login_user(uname, peer)
+        self.handle_login_user(uname, peer, sock)
         usr = User.load_user_from_json(uname)
         if usr is None:
-            self.send_data(b"No such user!")
+            self.send_data(b"No such user!", sock)
             raise Exception("No such user!")
-        self.handle_locked_user(usr, peer)
+        self.handle_locked_user(usr, peer, sock)
         usr.attempt()
         #A = int(content[LG.PADD_BLOCK:])
         A = content.split(self.DELIM)[1]
@@ -152,43 +152,43 @@ class ChatServer:
         s, B = usr.verifier.get_challenge()
         #print(b"B: " + B)
         response = bytes(s) + self.DELIM + B
-        self.send_data(response)
+        self.send_data(response, sock)
         self.clients[peer_hash] = (peer, usr)
     
-    def handle_user_verification(self, peer_hash, peer, content):
+    def handle_user_verification(self, peer_hash, peer, content, sock):
         usr = self.clients.get(peer_hash)[1]
         if usr is None:
             self.handle_login_init(peer, content)
         else:
-            self.handle_login_user(usr.name, peer)
-            self.handle_locked_user(usr, peer)
+            self.handle_login_user(usr.name, peer, sock)
+            self.handle_locked_user(usr, peer, sock)
             #print(b"M: " + M)
             HAMK = usr.verifier.verify_session(content)
             #print(b"HAMK: " + HAMK)
-            self.send_data(HAMK)
+            self.send_data(HAMK, sock)
             if not usr.verifier.authenticated():
                 self.clients[peer_hash][1] = None
                 raise LC.AuthenticationFailed()
             else:
                 self.logged_in_clients[usr.name] = usr
                 
-    def handle_login_user(self, uname, peer):
+    def handle_login_user(self, uname, peer, sock):
         time = self.locked_users.get(uname)
         if time is not None and datetime.now() - time >= UNLOCK_USER_AFTER:
             self.locked_users.pop(uname)
         if uname in list(self.logged_in_clients.keys()):
-            self.send_data(ERROR + b": User is logged in already")
+            self.send_data(ERROR + b": User is logged in already", sock)
             raise Exception(ERROR + b": User is logged in already")
     
-    def handle_locked_user(self, usr, peer):
+    def handle_locked_user(self, usr, peer, sock):
         msg = ERROR + b": User has been locked"
         if usr.name in list(self.locked_users.keys()):
-            self.send_data(msg)
+            self.send_data(msg, sock)
             raise Exception(msg)
         usr.attempt()
         if usr.attempts > self.ATTEMPTS_ALLOWED:
             self.locked_users[usr.name] = datetime.now()
-            self.send_data(msg)
+            self.send_data(msg, sock)
             raise Exception(msg)            
     
 #    def unlock_users(self):
@@ -221,17 +221,17 @@ class ChatServer:
                 # block until incoming_queue has pending data
 #                self.socket_out = data[0]
 #                peer = data[1]
-                self.socket_out = sock
+                #self.socket_out = sock
                 peer_hash = hash(peer)
-                content = self.recv_data()
+                content = self.recv_data(sock)
                 peer_pair = self.clients.get(peer_hash)
                 if peer_pair is not None:
                     if not peer_pair[1].verifier.authenticated():
-                        self.handle_user_verification(peer_hash, peer, content)
+                        self.handle_user_verification(peer_hash, peer, content, sock)
                     else:
-                        self.handle_continuation(peer_hash, peer, content)
+                        self.handle_continuation(peer_hash, peer, content, sock)
                 else:
-                    self.handle_login_init(peer_hash, peer, content)
+                    self.handle_login_init(peer_hash, peer, content, sock)
             except Exception as e:
                 traceback.print_exc()
                 self.handle_exception(e)
