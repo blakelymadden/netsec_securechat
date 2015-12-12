@@ -4,7 +4,7 @@ from cryptography.hazmat.primitives import serialization, hashes, hmac
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-#from cryptography.hazmat.primitives import padding as padd2
+from cryptography.hazmat.primitives import padding as padd2
 from cryptography.exceptions import InvalidSignature, InvalidKey
 import l_globals as LG
 
@@ -26,6 +26,7 @@ N = int(''.join(N.split()).replace(':', ''), 16)
 
 g = 2
 
+AES_KEY_SIZE = 32
 ################################
 
 # a one-way hash function
@@ -54,7 +55,7 @@ def cryptrand(n=1024):
     return random.SystemRandom().getrandbits(n) % N
 
 # creates a 16 bit cryptographic salt
-def gen_salt(size=2):
+def gen_salt(size=16):
     return os.urandom(size)
     
 # Generates public key from private key and saves it at dest
@@ -148,7 +149,7 @@ class SRP_User(SRP):
         x = H(self.salt, self.uname, self.password)
         S_c = pow(int(self.B) - self.k * pow(g, x, N), self.a + u * x, N)
         K_c = H(S_c)
-        self.session_key = K_c
+        self.session_key = str(K_c).encode()[:AES_KEY_SIZE]
 
     def process_challenge(self, salt, B):
         self.B = B
@@ -183,7 +184,7 @@ class SRP_Verifier(SRP):
         u = self.gen_rand_scrambler()
         S_s = pow(int(self.A) * pow(self.v, u, N), self.b, N)
         K_s = H(S_s)
-        self.session_key = K_s
+        self.session_key = str(K_s).encode()[:AES_KEY_SIZE]
 
     # verifies the users session
     def verify_session(self, M):
@@ -209,9 +210,9 @@ HMAC_BLOCK = 32
 def sym_enc(data, key, salt):
     cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
     encryptor = cipher.encryptor()
-#    padder = padd2.PKCS7(LG.PADD_BLOCK).padder()
-#    padded_data = padder.update(data)
-#    padded_data += padder.finalize()
+    padder = padd2.PKCS7(LG.PADD_BLOCK).padder()
+    padded_data = padder.update(data)
+    padded_data += padder.finalize()
     ct = encryptor.update(data) + encryptor.finalize()
     return ct
 
@@ -219,8 +220,8 @@ def sym_dec(data, key, salt):
     cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
     decryptor = cipher.decryptor()
     pad_plain_text = decryptor.update(cipher_text) + decryptor.finalize()
-#    unpadder = padd2.PKCS7(LG.PADD_BLOCK).unpadder()
-#    plain_text = unpadder.update(pad_plain_text)
+    unpadder = padd2.PKCS7(LG.PADD_BLOCK).unpadder()
+    plain_text = unpadder.update(pad_plain_text)
     return plain_text
     
     

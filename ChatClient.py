@@ -1,8 +1,10 @@
 import socket
 import sys
 import threading
+import traceback
 import local_crypt as LC
 import l_globals as LG
+from l_globals import LIST, SEND
 from cryptography.hazmat.backends import openssl
 from cryptography.hazmat.primitives import hashes, serialization, asymmetric, ciphers
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -68,9 +70,7 @@ class ChatClient:
         password = sys.stdin.readline(self.DATA_MAX)
         password = password.strip()
         srp_usr = LC.SRP_User(uname, password)
-        print("pass: " + str(srp_usr.password))
         uname, A = srp_usr.start_authentication()
-        print(b"A: " + A)
         #p_uname = LC.padd(uname)
         message = uname.encode() + self.DELIM + A
         self.send_data(message)
@@ -93,20 +93,18 @@ class ChatClient:
             return False
         self.salt = salt
         B = incoming.split(self.DELIM)[1]
-        print(b"B: " + B)
+#        print(b"B: " + B)
         #B = incoming[LG.PADD_BLOCK:]
         M = srp_usr.process_challenge(salt, B)
-        print(b"M: " + M)
+#        print(b"M: " + M)
         if M is None:
             print("\nFailed to Authenticate user:" + uname)
             exit(1)
-        print(M)
         self.send_data(M)
         incoming = ""
         while(len(incoming) == 0):
             incoming = self.recv_data()
         srp_usr.verify_session(incoming)
-        print(b"HAMK: " + incoming)
         if srp_usr.authenticated():
             self.session_key = srp_usr.session_key
             print("\nSuccessfully Logged In")
@@ -302,10 +300,13 @@ class ChatClient:
                 self.print_prompt()
                 message = sys.stdin.readline(self.DATA_MAX).encode().strip()
                 if message == LIST or message.startswith(SEND):
+                    print(message)
                     self.server_query(message)
                 else:
                     self.peer_session(message)
-            except:
+            except Exception as e:
+                print(e)
+                traceback.print_exc()
                 print("Error receiving user input")
                 
     def handle_incoming(self):
