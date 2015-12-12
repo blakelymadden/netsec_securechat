@@ -199,7 +199,7 @@ class ChatServer:
 #        for (uname, time) in self.locked_users:
 #            if datetime.now() - time >= UNLOCK_USER_AFTER:
 #                self.locked_users.pop(uname)
-            
+
     def handle_incoming(self):
         """
         ***BLOCKING***
@@ -211,7 +211,11 @@ class ChatServer:
         this is meant to be used in a dedicated thread to avoid hang ups.
         """
         # block until some message queued
-        data = self.incoming_queue.get()
+        while True:
+            data = self.incoming_queue.get()
+            threading.Thread(target=self.handle_conn, args=data).start()
+
+    def handle_conn(self, data):
         while True:
             try:
                 # block until incoming_queue has pending data
@@ -232,7 +236,7 @@ class ChatServer:
                 traceback.print_exc()
                 self.handle_exception(e)
             self.incoming_queue.poll()
-
+        
     def wait_for_message(self):
         """
         ***BLOCKING***
