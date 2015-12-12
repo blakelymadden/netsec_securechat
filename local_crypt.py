@@ -2,7 +2,7 @@
 import sys, os, hashlib, random
 from cryptography.hazmat.primitives import serialization, hashes, hmac
 from cryptography.hazmat.backends import default_backend
-#from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 #from cryptography.hazmat.primitives import padding as padd2
 from cryptography.exceptions import InvalidSignature, InvalidKey

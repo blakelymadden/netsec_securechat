@@ -1,8 +1,11 @@
 import user, os, json
 import local_crypt as LC
 
+PORT_IN = 10001
+    
 def gen_user(uname, pw, address="0.0.0.0"):
-    usr = user.User(uname, pw, address)
+    usr = user.User(uname, pw, address, port_in=PORT_IN)
+    PORT_IN += 1
     data = usr.json_dump()
     directory = user.USER_PATH + uname
     if not os.path.exists(directory):

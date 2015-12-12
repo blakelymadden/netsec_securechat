@@ -195,8 +195,8 @@ class ChatClient:
 
         self.socket_out.sendto(enc_aes_key_iv + rsa_sig, peer_addr)
         while not self.socket_out.recvfrom(DATA_MAX)[1] == peer_addr:
-        #more encrypt setup
-        self.socket_out.sendto(message, peer_addr)
+            #more encrypt setup
+            self.socket_out.sendto(message, peer_addr)
 
     def peer_session(self, message):
         peer = message.split(':')[0]

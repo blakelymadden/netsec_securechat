@@ -112,7 +112,7 @@ class ChatServer:
             uname = data[len(SEND) + 1 :]
             usr = self.logged_in_clients.get(uname)
             if usr is not None:
-                s_data = bytes(usr.address) + b" " + enc(usr.pub_key)
+                s_data = bytes(usr.address) + self.DELIM + enc(usr.pub_key)
                 self.send_data(s_data)
             else: 
                 s_data = enc(self.ERROR + b": User is not logged in")
