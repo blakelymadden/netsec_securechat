@@ -215,14 +215,14 @@ class ChatServer:
             data = self.incoming_queue.get()
             threading.Thread(target=self.handle_conn, args=data).start()
 
-    def handle_conn(self, data):
+    def handle_conn(self, sock, peer):
         while True:
             try:
                 # block until incoming_queue has pending data
-                self.socket_out = data[0]
-                peer = data[1]
+#                self.socket_out = data[0]
+#                peer = data[1]
+                self.socket_out = sock
                 peer_hash = hash(peer)
-                print(data)
                 content = self.recv_data()
                 peer_pair = self.clients.get(peer_hash)
                 if peer_pair is not None:
@@ -235,7 +235,6 @@ class ChatServer:
             except Exception as e:
                 traceback.print_exc()
                 self.handle_exception(e)
-            self.incoming_queue.poll()
         
     def wait_for_message(self):
         """
