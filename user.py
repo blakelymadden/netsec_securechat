@@ -29,10 +29,10 @@ class User():
             self.name = data['name']
             self.pw = data['password']
             self.addresss = data['addresss']
+            self.port_in = data["port_in"]
             self.pub_key = User.load_pub_key(self.name)
             if addresss is not None:
                 self.addresss = addresss
-            self.port_in = port_in
             
         else:
             self.name = name
@@ -48,6 +48,7 @@ class User():
             "name": self.name,
             "password": self.pw,
             "addresss": self.addresss
+            "port_in": self.port_in
         }
         return l_json
     
