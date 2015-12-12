@@ -61,17 +61,18 @@ class ChatClient:
         """
         print("Enter Username")
         self.print_prompt()
-        uname = sys.stdin.readline(self.DATA_MAX).encode()
-        uname = uname[:len(uname) - 1]
+        uname = sys.stdin.readline(self.DATA_MAX)
+        uname = uname.strip()
         print("Enter Password")
         self.print_prompt()
-        password = sys.stdin.readline(self.DATA_MAX).encode()
-        password = password[:len(password) - 1]
+        password = sys.stdin.readline(self.DATA_MAX)
+        password = password.strip()
         srp_usr = LC.SRP_User(uname, password)
+        print("pass: " + str(srp_usr.password))
         uname, A = srp_usr.start_authentication()
         print(b"A: " + A)
         #p_uname = LC.padd(uname)
-        message = uname + self.DELIM + A
+        message = uname.encode() + self.DELIM + A
         self.send_data(message)
         incoming = self.recv_data()
         salt = None

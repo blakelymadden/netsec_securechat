@@ -83,7 +83,7 @@ class ChatServer:
         """
         send data from self.socket_out
         """
-        self.sock.sendall(data)
+        sock.sendall(data)
 
     def handle_exception(self, exception):
         """
@@ -145,12 +145,13 @@ class ChatServer:
             raise Exception("No such user!")
         self.handle_locked_user(usr, peer, sock)
         usr.attempt()
-        #A = int(content[LG.PADD_BLOCK:])
         A = content.split(self.DELIM)[1]
-        #print(b"A: " + A)
+        print(b"A: " + A)
         usr.verifier = LC.SRP_Verifier(uname, LC.gen_salt(), usr.pw, A)
+        print("pass: " + str(usr.pw))
         s, B = usr.verifier.get_challenge()
-        #print(b"B: " + B)
+        print(b"salt: " + s)
+        print(b"B: " + B)
         response = bytes(s) + self.DELIM + B
         self.send_data(response, sock)
         self.clients[peer_hash] = (peer, usr)
@@ -162,7 +163,7 @@ class ChatServer:
         else:
             self.handle_login_user(usr.name, peer, sock)
             self.handle_locked_user(usr, peer, sock)
-            #print(b"M: " + M)
+            print(b"M: " + content)
             HAMK = usr.verifier.verify_session(content)
             #print(b"HAMK: " + HAMK)
             self.send_data(HAMK, sock)

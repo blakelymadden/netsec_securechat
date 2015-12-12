@@ -19,6 +19,8 @@ def gen_user(uname, pw, port, address="0.0.0.0"):
     
 
 for name in names:
-    gen_user(name, name[0].lower() + "password", PORT_IN)
+    pw = name[0].lower() + "password"
+    gen_user(name, pw, PORT_IN)
+    print(name + " " + pw)
     PORT_IN +=1
 
