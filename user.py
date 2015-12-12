@@ -39,6 +39,7 @@ class User():
             self.pw = H(pw, name, N)
             self.addresss = addresss
             self.pub_key = None
+            self.port_in = port_in
         self.attempts = 0
         self.verifier = None
             
@@ -47,8 +48,8 @@ class User():
         l_json = {
             "name": self.name,
             "password": self.pw,
-            "addresss": self.addresss
-            "port_in": self.port_in
+            "addresss": self.addresss,
+            "port_in": self.port_in,
         }
         return l_json
     

@@ -2,10 +2,11 @@ import user, os, json
 import local_crypt as LC
 
 PORT_IN = 10001
-    
-def gen_user(uname, pw, address="0.0.0.0"):
-    usr = user.User(uname, pw, address, port_in=PORT_IN)
-    PORT_IN += 1
+names = ['Alice', 'Blake', 'Charle', 'Diana', 'Emma',
+        'Frank', 'George', 'Haley', 'Isaac', 'Jacob', 'Karen']
+
+def gen_user(uname, pw, port, address="0.0.0.0"):
+    usr = user.User(uname, pw, address, port_in=port)
     data = usr.json_dump()
     directory = user.USER_PATH + uname
     if not os.path.exists(directory):
@@ -17,14 +18,7 @@ def gen_user(uname, pw, address="0.0.0.0"):
     LC.gen_pub_key(user.User.get_user_pub_key_path(uname), priv_key_path)
     
 
-gen_user('Alice', 'apassword')
-gen_user('Blake', 'bpassword')
-gen_user('Charle', 'cpassword')
-gen_user('Diana', 'dpassword')
-gen_user('Emma', 'epassword')
-gen_user('Frank', 'fpassword')
-gen_user('George', 'gpassword')
-gen_user('Haley', 'hpassword')
-gen_user('Isaac', 'ipassword')
-gen_user('Jacob', 'jpassword')
-gen_user('Karen', 'kpassword')
+for name in names:
+    gen_user(name, name[0].lower() + "password", PORT_IN)
+    PORT_IN +=1
+
