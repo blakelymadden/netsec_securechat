@@ -206,13 +206,21 @@ class AuthenticationFailed (Exception):
 
 ######## Symetric Encryption ########
 HMAC_BLOCK = 32
-
+ENDDELIM = "~!~!~"
 def sym_enc(data, key, salt):
     cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
     encryptor = cipher.encryptor()
-    padder = padd2.PKCS7(LG.PADD_BLOCK).padder()
-    padded_data = padder.update(data)
-    padded_data += padder.finalize()
+    #    padder = padd2.PKCS7(LG.PADD_BLOCK).padder()
+    #    padded_data = padder.update(data)
+    #    padded_data += padder.finalize()
+    block_size_bytes = algorithms.AES.block_size / 8
+    missing_bytes = block_size_bytes -\
+                    ((len(data)
+                      + len(self.ENDDELIM)) %
+                     block_size_bytes)
+    data += self.ENDDELIM
+    if missing_bytes: data += os.urandom(missing_bytes)
+
     ct = encryptor.update(data) + encryptor.finalize()
     return ct
 
@@ -220,9 +228,9 @@ def sym_dec(data, key, salt):
     cipher = Cipher(algorithms.AES(key), modes.CBC(salt), backend=default_backend())
     decryptor = cipher.decryptor()
     pad_plain_text = decryptor.update(cipher_text) + decryptor.finalize()
-    unpadder = padd2.PKCS7(LG.PADD_BLOCK).unpadder()
-    plain_text = unpadder.update(pad_plain_text)
-    return plain_text
+    #unpadder = padd2.PKCS7(LG.PADD_BLOCK).unpadder()
+    #plain_text = unpadder.update(pad_plain_text)
+    return pad_plain_text.split(ENDDELIM)[0]
     
     
 def apply_hmac(data, key):

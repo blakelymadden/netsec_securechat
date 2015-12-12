@@ -20,6 +20,7 @@ class ChatClient:
     SEND = b"send "
     LIST = b"list"
     DELIM = b"~~~~~"
+    ENDDELIM = b"~!~!~"
     
     def __init__(self, server_info, port=10002, DATA_MAX=8192):
         """ Initialize a chat client instance
@@ -196,8 +197,10 @@ class ChatClient:
         plaintext = message
         block_size_bytes = ciphers.algorithms.AES.block_size / 8
         missing_bytes = block_size_bytes -\
-                        (len(plaintext) %
-                        block_size_bytes)
+                        ((len(plaintext)
+                          + len(self.ENDDELIM)) %
+                         block_size_bytes)
+        plaintext += self.ENDDELIM
         if missing_bytes: plaintext += os.urandom(missing_bytes)
         
         # split the plaintext into blocks for the AES CBC algorithm to use
@@ -235,6 +238,7 @@ class ChatClient:
         # decrypt the AES ciphertext and split it into the message and
         # signature
         plaintext = decryptor.update(message) + decryptor.finalize()
+        return plaintext.split(self.ENDDELIM)[0]
 
     def init_peer_session(self, message, peer_info):
         peer_host_port = (peer_info[0][0], peer_info[0][1])
