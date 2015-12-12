@@ -124,6 +124,7 @@ class ChatClient:
             self.socket_out.bind(('', self.port-100))
 
             # greet the server
+            logged = False
             while not logged: logged = self.greet_with_srp()
             
             # set up the threads but do not start them
