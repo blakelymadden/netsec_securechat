@@ -34,7 +34,6 @@ class ChatClient:
         self.peer = None
         self.session_key = None
         self.salt = None
-        self.user_keys = {}
         self.peers = {}
         self.active_sessions = {}
 
@@ -121,7 +120,7 @@ class ChatClient:
             self.socket_wait.listen(1)
 
             self.socket_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
-                                            IPPROTO_UDP)
+                                            socket.IPPROTO_UDP)
             self.socket_out.bind(('', self.port-100))
 
             # greet the server
@@ -149,12 +148,13 @@ class ChatClient:
         """
         return self.socket.recv(self.DATA_MAX)
 
-    def send_data(self, data, crypt=None, *args):
+    def send_data(self, data, crypt=False):
         """
         send data to the server
         """
-        if crypt is not None:
-            data = crypt(data, args)
+        if crypt:
+            enc = lambda s: LC.enc_and_hmac(s, self.session_key, self.salt)
+            data = enc(data)
         self.socket.sendall(data)
 
     def init_session(self):
@@ -166,15 +166,73 @@ class ChatClient:
         self.input_thread.start()
 
     def server_query(self, message):
-        pass
+        dec = lambda s: LC.dec_and_hmac(s, self.session_key, self.salt)
+        if message == LIST:
+            self.send_data(message, True)
+            response = dec(self.recv_data())
+            print(response)
+            self.print_prompt()
+        elif message.startswitch(SEND):
+            self.send_data(message, True)
+            response = dec(self.recv_data())
+            split1 = response.split(':')
+            split2 = split1.split(DELIM)
+            self.peers[split1[0]] = (split1[0], split2[0], split2[1])
+
+    def aes_encrypt(self, message, peer_key, peer_iv):
+        # set up the plaintext (padded if needed) for AES encryption
+        plaintext = message
+        block_size_bytes = ciphers.algorithms.AES.block_size / 8
+        missing_bytes = block_size_bytes -\
+                        (len(plaintext) %
+                        block_size_bytes)
+        if missing_bytes: plaintext += os.urandom(missing_bytes)
+        
+        # split the plaintext into blocks for the AES CBC algorithm to use
+        blocks = []
+        for i in range(0, len(plaintext) / block_size_bytes):
+            blocks.append(
+                plaintext[i*block_size_bytes:(i+1)*block_size_bytes])
+            
+        # set up the AES encryptor with the key and iv
+        encryptor = ciphers.Cipher(
+            ciphers.algorithms.AES(aeskey),
+            ciphers.modes.CBC(aesiv),
+            self.backend
+        ).encryptor()
+        
+        # encrypt all of the message blocks
+        encrypted_blocks = []
+        for block in blocks:
+            encrypted_blocks.append(encryptor.update(block))
+        blocks.append(encryptor.finalize())
+
+        out = ''
+        # write the AES encrypted message to the output file
+        for block in encrypted_blocks:
+            out+= block
+        return out
+
+    def aes_decrypt(self, message, peer_info):
+        # set up the decryptor using the aes 256 key and iv
+        decryptor = ciphers.Cipher(
+            ciphers.algorithms.AES(peer_info[1][0]),
+            ciphers.modes.CBC(peer_info[1][1]),
+            self.backend
+        ).decryptor()
+        # decrypt the AES ciphertext and split it into the message and
+        # signature
+        plaintext = decryptor.update(message) + decryptor.finalize()
 
     def init_peer_session(self, message, peer_info):
-        peer_addr = self.peer_info[0]
-        peer_pub = self.peer_info[1]
+        peer_host_port = (peer_info[0][0], peer_info[0][1])
+        peer_pub = peer_info[0][2]
 
         # generate the random key and initialization vector for aes256
         aeskey = os.urandom(32)
         aesiv = os.urandom(16)
+
+        peer_info.append((aeskey, aesiv))
 
         rsa_data = aesiv + self.DELIM + aeskey
 
@@ -193,23 +251,30 @@ class ChatClient:
         rsa_signer.update(rsa_data)
         rsa_sig = rsa_signer.finalize()
 
-        self.socket_out.sendto(enc_aes_key_iv + rsa_sig, peer_addr)
-        while not self.socket_out.recvfrom(DATA_MAX)[1] == peer_addr:
-        #more encrypt setup
-        self.socket_out.sendto(message, peer_addr)
+        self.socket_out.sendto(enc_aes_key_iv + DELIM + rsa_sig, peer_host_port)
+        received = None
+        while True:
+            received = self.socket_out.recvfrom(DATA_MAX)
+            if not received[1] == peer_addr:
+                continue
+        self.peer_session(message)
 
     def peer_session(self, message):
-        peer = message.split(':')[0]
+        peer_split = message.split(':')
 
-        peer_info = self.peers.get(peer)
+        peer_info = self.peers.get(peer_split[0])
 
         if peer_info is None:
             print("\n<- Request this user's info before continuing", flush=True)
             self.print_prompt()
-        elif not peer_info[0]:
-            self.init_peer_session(peer[1], peer_info)
         else:
-            return#TODO
+            try:
+                self.peers.get(peer_split[0])[1]
+            except:
+                self.init_peer_session(peer_split[1], peer_info)
+
+        tosend = self.aes_encrypt(peer_split[1], peer_info[1][0], peer_info[1][1])
+        socket_out.sendto(tosend, (peer_info[0][0], peer_info[0][1]))
 
     def handle_input(self):
         """
@@ -226,29 +291,6 @@ class ChatClient:
                     self.server_query(message)
                 else:
                     self.peer_session(message)
-                    
-#                self.print_prompt()
-#                message = sys.stdin.readline(self.DATA_MAX).encode()
-#                if message == LIST:
-#                    message = message.strip()
-#                    self.send_data(message, crypt=True)
-#                elif message.startswith(SEND):
-#                    ### BLAKE YOU DO THIS PART ###
-#                    uname = data[len(send) + 1 :]
-#                    if uname in list(self.user_keys.keys()):
-#                        print("u got this blake")
-#                    else:
-#                        data = LC.enc_and_hmac(message, self.session_key, self.salt)
-#                        self.send_data(data, crypt=True)
-#                        incoming = None
-#                        while(len(incoming) == 0):
-#                            incoming = self.recv_data()
-#                        if incoming is not None:
-#                            incoming = LC.enc_and_hmac(incoming, self.session_key, self.salt)
-#                            self.user_keys[uname] = incoming
-#                            #### BLAKE! ###
-#                            print("u got this blake")
-                        
             except:
                 print("Error receiving user input")
                 
@@ -269,7 +311,11 @@ class ChatClient:
                 incoming_sock = incoming_conn[0]
                 incoming_info = incoming_conn[1]
                 incoming = incoming_sock.recv(DATA_MAX)
-                print('\n<- ' + incoming.decode(), flush=True)
+                peer_split = incoming.split(' ')
+                split2 = peer_split[1].split(':')
+                peer = peer_split[0]
+                peer_info = self.peers.get(peer)
+                print('\n<- ' + self.aes_decrypt(split2[1], peer_info), flush=True)
                 self.print_prompt()
             except Exception as e:
                 self.handle_exception(e)
