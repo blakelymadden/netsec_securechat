@@ -23,20 +23,23 @@ users file path
 """
 
 class User():
-    def __init__(self, name=None, pw=None, addresss=None, json_data=None):
+    def __init__(self, name=None, pw=None, addresss=None, port_in=None, json_data=None):
         if(json_data != None):
             data = json_data
             self.name = data['name']
             self.pw = data['password']
             self.addresss = data['addresss']
+            self.port_in = data["port_in"]
             self.pub_key = User.load_pub_key(self.name)
             if addresss is not None:
                 self.addresss = addresss
+            
         else:
             self.name = name
             self.pw = H(pw, name, N)
             self.addresss = addresss
             self.pub_key = None
+            self.port_in = port_in
         self.attempts = 0
         self.verifier = None
             
@@ -45,7 +48,8 @@ class User():
         l_json = {
             "name": self.name,
             "password": self.pw,
-            "addresss": self.addresss
+            "addresss": self.addresss,
+            "port_in": self.port_in,
         }
         return l_json
     
