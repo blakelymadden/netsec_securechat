@@ -127,8 +127,7 @@ class SRP(object):
         
     def authenticated(self):
         return self.is_auth
-    
-exit    
+        
 # SRP User class
 class SRP_User(SRP):
 
@@ -155,11 +154,11 @@ class SRP_User(SRP):
         self.B = B
         self.salt = salt
         self.create_session_key()
-        self.M = H(H(N) ^ H(g), H(self.uname), self.salt, self.A, self.B, self.session_key)
+        self.M = str(H(H(N) ^ H(g), H(self.uname), self.salt, self.A, self.B, self.session_key)).encode("utf-8")
         return self.M
     
     def verify_session(self, HAMK):
-        M_s = H(self.A, self.M, self.session_key)
+        M_s = str(H(self.A, self.M, self.session_key)).encode("utf-8")
         if M_s == HAMK:
             self.is_auth = True 
     
@@ -176,7 +175,7 @@ class SRP_Verifier(SRP):
         
     # gets the inital challenge that the server will send
     def get_challenge(self):
-        self.B = bytes(str((self.k * self.v + pow(g, self.b, N)) % N).encode("utf-8"))
+        self.B = str((self.k * self.v + pow(g, self.b, N)) % N).encode("utf-8")
         return (self.salt, self.B)
     
     # generates a shared session key
@@ -190,11 +189,11 @@ class SRP_Verifier(SRP):
     def verify_session(self, M):
         HAMK = None 
         self.create_session_key()
-        M_c = H(H(N) ^ H(g), H(self.uname), self.salt, self.A, self.B, self.session_key)
+        M_c = str(H(H(N) ^ H(g), H(self.uname), self.salt, self.A, self.B, self.session_key)).encode("utf-8")
         if M_c == M:
             self.is_auth = True
             HAMK = H(self.A, M_c, self.session_key)
-            return HAMK
+            return str(HAMK).encode("utf-8")
         else:
             return None
 

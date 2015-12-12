@@ -69,6 +69,7 @@ class ChatClient:
         password = password[:len(password) - 1]
         srp_usr = LC.SRP_User(uname, password)
         uname, A = srp_usr.start_authentication()
+        print(b"A: " + A)
         #p_uname = LC.padd(uname)
         message = uname + self.DELIM + A
         self.send_data(message)
@@ -91,16 +92,20 @@ class ChatClient:
             return False
         self.salt = salt
         B = incoming.split(self.DELIM)[1]
+        print(b"B: " + B)
         #B = incoming[LG.PADD_BLOCK:]
         M = srp_usr.process_challenge(salt, B)
+        print(b"M: " + M)
         if M is None:
             print("\nFailed to Authenticate user:" + uname)
             exit(1)
         print(M)
-        self.send_data(str(M).encode("utf-8"))
+        self.send_data(M)
+        incoming = ""
         while(len(incoming) == 0):
             incoming = self.recv_data()
         srp_usr.verify_session(incoming)
+        print(b"HAMK: " + incoming)
         if srp_usr.authenticated():
             self.session_key = srp_usr.session_key
             print("\nSuccessfully Logged In")

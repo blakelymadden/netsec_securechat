@@ -146,12 +146,12 @@ class ChatServer:
         self.handle_locked_user(usr, peer)
         usr.attempt()
         #A = int(content[LG.PADD_BLOCK:])
-        A = int(content.split(self.DELIM)[1])
+        A = content.split(self.DELIM)[1]
+        #print(b"A: " + A)
         usr.verifier = LC.SRP_Verifier(uname, LC.gen_salt(), usr.pw, A)
         s, B = usr.verifier.get_challenge()
-        #response = LC.padd(bytes(s)) + bytes(B)
-        response = bytes(s) + self.DELIM + bytes(B)
-        print(response)
+        #print(b"B: " + B)
+        response = bytes(s) + self.DELIM + B
         self.send_data(response)
         self.clients[peer_hash] = (peer, usr)
     
@@ -162,8 +162,10 @@ class ChatServer:
         else:
             self.handle_login_user(usr.name, peer)
             self.handle_locked_user(usr, peer)
-            HAMK = usr.verifier.verify_session(int(content.decode("utf-8")))
-            self.send_data(bytes(HAMK))
+            #print(b"M: " + M)
+            HAMK = usr.verifier.verify_session(content)
+            #print(b"HAMK: " + HAMK)
+            self.send_data(HAMK)
             if not usr.verifier.authenticated():
                 self.clients[peer_hash][1] = None
                 raise LC.AuthenticationFailed()
@@ -209,13 +211,14 @@ class ChatServer:
         this is meant to be used in a dedicated thread to avoid hang ups.
         """
         # block until some message queued
+        data = self.incoming_queue.get()
         while True:
             try:
                 # block until incoming_queue has pending data
-                data = self.incoming_queue.get()
                 self.socket_out = data[0]
                 peer = data[1]
                 peer_hash = hash(peer)
+                print(data)
                 content = self.recv_data()
                 peer_pair = self.clients.get(peer_hash)
                 if peer_pair is not None:
@@ -228,6 +231,7 @@ class ChatServer:
             except Exception as e:
                 traceback.print_exc()
                 self.handle_exception(e)
+            self.incoming_queue.poll()
 
     def wait_for_message(self):
         """
