@@ -3,6 +3,11 @@ import sys
 import threading
 import local_crypt as LC
 import l_globals as LG
+from cryptography.hazmat.backends import openssl
+from cryptography.hazmat.primitives import hashes, serialization, asymmetric, ciphers
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.ciphers import algorithms, modes
+import os
 
 enc = lambda s: LC.enc_and_hmac(s, usr.verifier.session_key, usr.verifier.salt)
 
@@ -36,6 +41,7 @@ class ChatClient:
         self.salt = None
         self.peers = {}
         self.active_sessions = {}
+        self.backend = openssl.backend
 
     def print_prompt(self):
         """
